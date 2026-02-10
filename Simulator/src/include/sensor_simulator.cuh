@@ -57,18 +57,20 @@ namespace raycast
         public:
             GridMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float resolution, int occupy_threshold);
             ~GridMap() {};
-            void freeGridMap() {cudaFree(map_cuda_);}
+            void freeGridMap();
             __host__ __device__ Vector3i Pos2Vox(const Vector3f &pos);
             __host__ __device__ Vector3f Vox2Pos(const Vector3i &vox);
             __host__ __device__ int Vox2Idx(const Vector3i &vox);
             __host__ __device__ Vector3i Idx2Vox(int idx);
             __device__ int symmetricIndex(int index, int length);
             __device__ int mapQuery(const Vector3f &pos);
+            int mapQueryHost(const Vector3f &pos);
 
             float raycast_step_; // raycast step
         private:
             // map param
             int *map_cuda_;
+            int *query_cuda_;
             float resolution_;                                           // grid resolution
             float origin_x_, origin_y_, origin_z_;                       // origin coordinates
             int grid_size_x_, grid_size_y_, grid_size_z_, grid_size_yz_; // grid sizes

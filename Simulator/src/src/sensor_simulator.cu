@@ -2,6 +2,12 @@
 
 namespace raycast
 {   
+    __global__ void mapQueryKernel(GridMap grid_map, Vector3f pos, int* occupied)
+    {
+        if (threadIdx.x == 0 && blockIdx.x == 0)
+            occupied[0] = grid_map.mapQuery(pos);
+    }
+
     GridMap::GridMap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float resolution, int occupy_threshold = 1){
         const float epsilon = 0.001f;   // 避免数值误差导致 (1)建图空行 (2)边缘点被忽略
         Eigen::Vector4f min_pt, max_pt;
@@ -40,6 +46,22 @@ namespace raycast
         }
         cudaMalloc((void **)&map_cuda_, grid_total_size * sizeof(int));
         cudaMemcpy(map_cuda_, h_map.data(), grid_total_size * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMallocManaged((void **)&query_cuda_, sizeof(int));
+        query_cuda_[0] = 0;
+    }
+
+    void GridMap::freeGridMap()
+    {
+        if (map_cuda_ != nullptr)
+        {
+            cudaFree(map_cuda_);
+            map_cuda_ = nullptr;
+        }
+        if (query_cuda_ != nullptr)
+        {
+            cudaFree(query_cuda_);
+            query_cuda_ = nullptr;
+        }
     }
 
     __host__ __device__ Vector3i GridMap::Pos2Vox(const Vector3f &pos)
@@ -100,6 +122,13 @@ namespace raycast
         if (map_cuda_[idx] > occupy_threshold_)
             return 1;
         return 0;        
+    }
+
+    int GridMap::mapQueryHost(const Vector3f &pos)
+    {
+        mapQueryKernel<<<1, 1>>>(*this, pos, query_cuda_);
+        cudaDeviceSynchronize();
+        return query_cuda_[0];
     }
 
     __global__ void cameraRaycastKernel(float* depth_values, GridMap grid_map, CameraParams camera_param, cudaMat::SE3<float> T_wc)

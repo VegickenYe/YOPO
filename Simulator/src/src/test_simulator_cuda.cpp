@@ -9,6 +9,7 @@
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Image.h>
+#include <std_msgs/Int32.h>
 #include <pcl_ros/point_cloud.h>
 #include <cv_bridge/cv_bridge.h>
 #include <iostream>
@@ -108,6 +109,7 @@ public:
         // ROS
         image_pub_ = nh_.advertise<sensor_msgs::Image>(depth_topic, 1);
         point_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(lidar_topic, 1);
+        collision_counter_total_pub_ = nh_.advertise<std_msgs::Int32>("/yopo/collision_counter_total", 1);
         odom_sub_ = nh_.subscribe(odom_topic, 1, &SensorSimulator::odomCallback, this, ros::TransportHints().tcpNoDelay());
         timer_map_   = nh_.createTimer(ros::Duration(1), &SensorSimulator::timerMapCallback, this);
 
@@ -122,6 +124,8 @@ public:
     void renderLidarCallback(const ros::Time stamp);
 
     void timerMapCallback(const ros::TimerEvent &);
+
+    void publishCollisionCounterTotal();
 
 private:
     bool render_depth{false};
@@ -138,6 +142,7 @@ private:
     ros::NodeHandle nh_;
     ros::Publisher image_pub_, point_cloud_pub_;
     ros::Publisher pcl_pub;
+    ros::Publisher collision_counter_total_pub_;
     ros::Subscriber odom_sub_;
     ros::Timer timer_depth_, timer_lidar_, timer_map_;
 
@@ -145,6 +150,7 @@ private:
     ros::Duration depth_pub_duration, lidar_pub_duration;
     double depth_time{0.0}, lidar_time{0.0};
     int depth_count{0}, lidar_count{0};
+    int collision_counter_total_{0};
     // mocka::Maps map;
 };
 
@@ -180,6 +186,12 @@ void SensorSimulator::timerMapCallback(const ros::TimerEvent&) {
         pcl_pub.publish(output);    
 }
 
+void SensorSimulator::publishCollisionCounterTotal() {
+    std_msgs::Int32 total_msg;
+    total_msg.data = collision_counter_total_;
+    collision_counter_total_pub_.publish(total_msg);
+}
+
 void SensorSimulator::renderLidarCallback(const ros::Time stamp) {
     if (!render_lidar)
         return;
@@ -213,6 +225,13 @@ void SensorSimulator::odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
     pos.x() = msg->pose.pose.position.x;
     pos.y() = msg->pose.pose.position.y;
     pos.z() = msg->pose.pose.position.z;
+
+    const int occupied = grid_map->mapQueryHost(Vector3f(pos.x(), pos.y(), pos.z()));
+    if (occupied == 1) {
+        collision_counter_total_ += 1;
+        ROS_WARN_THROTTLE(1.0, "UAV is inside occupied voxel. total=%d", collision_counter_total_);
+    }
+    publishCollisionCounterTotal();
 
     ros::Time tnow = ros::Time::now();
 
