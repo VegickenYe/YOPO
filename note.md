@@ -4,27 +4,31 @@
 ```bash
 cd /home/dzp/projects/YOPO
 
-docker build -f docker/simulation.dockerfile \
+sudo docker build -f docker/simulation.dockerfile \
   -t dzp_yopo:sim-u2004-noetic-py38 \
   --network=host --progress=plain .
 
 xhost +local:root
 
-docker run --name dzp-yopo -itd --privileged --gpus all --network host \
+sudo docker run --name dzp-yopo -itd --privileged --gpus all --network host \
   --entrypoint bash \
   -e DISPLAY -e QT_X11_NO_MITSHM=1 \
-  -e http_proxy=http://127.0.0.1:8889 \
-  -e https_proxy=http://127.0.0.1:8889 \
   -v $HOME/.Xauthority:/root/.Xauthority \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   --shm-size=4g \
-  -v /home/dzp/projects/YOPO:/workspace/YOPO \
+  -v /home/ykx/ros1/YOPO:/workspace/YOPO \
   dzp_yopo:sim-u2004-noetic-py38
 
-docker exec -it dzp-yopo /bin/bash
+sudo docker exec -it dzp-yopo /bin/bash
 
 cd /workspace/YOPO
 ```
+## docker说明
+-v $HOME/.Xauthority:/root/.Xauthority ： 让容器里的 root 用户获得访问宿主机图形界面的认证
+删除镜像sudo docker rmi <镜像名> 查看镜像 sudo docker images 
+删除容器sudo docker rm <容器名> 查看容器 sudo docker ps -a
+## Clash说明
+Clash打开局域网连接
 
 ## 代码用法（容器内）
 ```bash
@@ -131,10 +135,40 @@ tensorboard --logdir=./
 - `YOPO/loss/`：损失函数由四部分组成：平滑性（jerk/acc）、安全性（ESDF 距离）、目标引导（朝向目标）和分数监督。
 - `YOPO/loss/safety_loss.py`：从 `dataset/pointcloud-*.ply` 构建 ESDF，训练时对多条候选轨迹做可微距离查询与碰撞惩罚。
 - `YOPO/policy/yopo_dataset.py`：读取深度图与位姿，随机采样速度/加速度/目标方向，构造训练 observation。
-- `YOPO/policy/yopo_trainer.py`：训练主循环。前向后将预测轨迹变换到世界系，按损失计算梯度并写 TensorBoard。
+- `YOPO/policy/yopo_trainer.py`：
+
+训练主循环。前向后将预测轨迹变换到世界系，按损失计算梯度并写 TensorBoard。
+- `YOPO/policy/yopo_network.py`：
+    输入深度图和状态向量，拼接后送入预测头，输出轨迹终状态和对应分数
 - `YOPO/test_yopo_ros.py`：在线 ROS 节点。订阅深度与里程计，网络推理后选择最低代价基元，并用五次多项式生成可执行轨迹发布到控制器。
 - `YOPO/yopo_trt_transfer.py`：将 PyTorch 权重导出为 TensorRT，加速机载部署。
 - 关键配置集中在 `YOPO/config/traj_opt.yaml`：飞行速度、基元数量、相机参数、训练采样分布、各项损失权重。
+
+## 网络结构(YOPO/policy/yopo_network.py)
+`forward`:
+输入深度图和状态向量(速度，加速度，目标朝向)，拼接后送入预测头，输出轨迹终状态和对应分数
+深度图进入ResNet18输出[B,64,vertical_num, horizon_num],状态向量不变保持[B,9,vertical_num, horizon_num]，拼接成[B,73,vertical_num, horizon_num],输入从73维映射到了256维，这一层继续在256维特征空间里做组合,最后映射到了10维的输出(x_pva,y_pva,z_pva,score)
+
+`StateTransform`:
+normalize_obs 作用是把速度，加速度和目标朝向归一化
+prepare_input 把状态从[B,9]变成[B, 9, V, H],V和H是通过预设的旋转矩阵变换到的候选轨迹
+forward 已写
+pred_to_endstate 把网络在每个 primitive 上输出的归一化局部预测，解码成 body frame 下真实的终点位置、速度和加速度
+
+`forward_and_compute_loss`:
+pre-process 把当前状态从机体坐标系转换到世界坐标系，并拼接成9维start_state_w，这个不作为网络的输出
+forward-propagation 将depth和obs_b作为输入，并输出body系下endstate
+post-process 将endstate从body系转到世界系
+## 损失函数(YOPO/loss/loss_function.py)
+`forward`:把[B* V *H, 3, 3]中p_xyz,v_xyz,a_xyz转换成x_pva,y_pva,z_pva
+`qp_generation`:构建映射矩阵(b(状态pva) = A(t的函数)*c(多项式系数))，jerk的H海森矩阵(t的函数，只有 i,j = 3,4,5 才非零)和Q海森矩阵(t的函数，只有 i,j = 2,3,4,5 才非零)
+`stack_opt_dep`:将二次型的b(状态pva)转换成d(起点状态和终点状态),中间项的H变成_R_Jerk = _C @ (B_T) @ H @ B @ Ct，中间项的Q变成_R_Acc = _C @ (B_T) @ Q @ B @ Ct ，L是“边界条件 → 多项式系数”的映射矩阵
+`SmoothnessLoss`:根据forward计算出来的endstate和当前的start_state_w合并与_R_Jerk和_R_Acc计算jerk_smooth和accel_smooth(unsqueeze(0)是第0列加入长度为1的新维度，squeeze()把所有长度为1的去掉)
+`SafetyLoss`:
+
+
+## 问题
+map_id score
 
 ## 说明
 - 当前 Docker 方案默认 Python=3.8、ROS=noetic，不使用 conda/mamba/uv。

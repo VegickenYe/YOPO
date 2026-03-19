@@ -51,7 +51,7 @@ class YopoNet:
         self.ctrl_time = None
         self.desire_init = False
         self.arrive = False
-        self.desire_pos = None
+        self.desire_pos = None #期望到达的位置
         self.desire_vel = None
         self.desire_acc = None
         self.optimal_poly_x = None

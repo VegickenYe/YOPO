@@ -12,7 +12,7 @@ class StateTransform:
     def pred_to_endstate(self, endstate_pred: torch.Tensor) -> torch.Tensor:
         """
             Transform the predicted state to the body frame (Original prediction → Primitive frame → Body frame).
-            endstate_pred: [batch; px py pz vx vy vz ax ay az; primitive_v; primitive_h]
+            endstate_pred: [batch; dyaw d_pitch radius vpx vpy vpz apx apy apz; primitive_v; primitive_h]
             :return [batch; px py pz vx vy vz ax ay az; primitive_v; primitive_h] in body frame
         """
         B, V, H = endstate_pred.shape[0], endstate_pred.shape[2], endstate_pred.shape[3]

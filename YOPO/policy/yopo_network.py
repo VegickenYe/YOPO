@@ -31,10 +31,10 @@ class YopoNetwork(nn.Module):
         """
             forward propagation of neural network
         """
-        depth_feature = self.image_backbone(depth)
-        obs_feature = self.state_backbone(obs)
-        input_tensor = torch.cat((obs_feature, depth_feature), 1)
-        output = self.yopo_head(input_tensor)
+        depth_feature = self.image_backbone(depth) #[B,64,vertical_num, horizon_num]
+        obs_feature = self.state_backbone(obs) #[B,9,vertical_num, horizon_num]
+        input_tensor = torch.cat((obs_feature, depth_feature), 1) #[B,73,vertical_num, horizon_num]
+        output = self.yopo_head(input_tensor) 
         endstate = torch.tanh(output[:, :9])  # [batch, 9, vertical_num, horizon_num]
         score = torch.nn.functional.softplus(output[:, 9])  # [batch, vertical_num, horizon_num]
         return endstate, score

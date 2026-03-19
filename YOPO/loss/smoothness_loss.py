@@ -5,8 +5,8 @@ import torch as th
 class SmoothnessLoss(nn.Module):
     def __init__(self, RJ, RA):
         super(SmoothnessLoss, self).__init__()
-        self._RJ = RJ
-        self._RA = RA
+        self._RJ = RJ #jerk的关于t的系数矩阵
+        self._RA = RA #accel的关于t的系数矩阵
 
     def forward(self, Df, Dp):
         """

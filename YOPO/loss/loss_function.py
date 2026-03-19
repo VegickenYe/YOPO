@@ -38,25 +38,25 @@ class YOPOLoss(nn.Module):
         for i in range(3):
             A[2 * i, i] = math.factorial(i)
             for j in range(i, 6):
-                A[2 * i + 1, j] = math.factorial(j) / math.factorial(j - i) * (self.sgm_time ** (j - i))
+                A[2 * i + 1, j] = math.factorial(j) / math.factorial(j - i) * (self.sgm_time ** (j - i)) #b(状态pva) = A(t的函数)*c(多项式系数)
 
         # H海森矩阵，对应Jerk
         H = th.zeros((6, 6))
         for i in range(3, 6):
             for j in range(3, 6):
-                H[i, j] = i * (i - 1) * (i - 2) * j * (j - 1) * (j - 2) / (i + j - 5) * (self.sgm_time ** (i + j - 5))
+                H[i, j] = i * (i - 1) * (i - 2) * j * (j - 1) * (j - 2) / (i + j - 5) * (self.sgm_time ** (i + j - 5)) # t的函数，只有 i,j = 3,4,5 才非零
 
         # Q海森矩阵，对应Accel
         Q = th.zeros((6, 6))
         for i in range(2, 6):
             for j in range(2, 6):
-                Q[i, j] = (i * (i - 1)) * (j * (j - 1)) / (i + j - 3) * (self.sgm_time ** (i + j - 3))
+                Q[i, j] = (i * (i - 1)) * (j * (j - 1)) / (i + j - 3) * (self.sgm_time ** (i + j - 3)) # t的函数，只有 i,j = 2,3,4,5 才非零
 
         return self.stack_opt_dep(A, H, Q)
 
     def stack_opt_dep(self, A, H, Q):
         Ct = th.zeros((6, 6))
-        Ct[[0, 2, 4, 1, 3, 5], [0, 1, 2, 3, 4, 5]] = 1
+        Ct[[0, 2, 4, 1, 3, 5], [0, 1, 2, 3, 4, 5]] = 1 #b(状态pva)=Ct*d(起点状态和终点状态) 
 
         _C = th.transpose(Ct, 0, 1)
 
